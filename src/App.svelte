@@ -1,4 +1,6 @@
 <script>
+  import { onMount } from 'svelte';
+
   const pages = {
     'reservation-yield': {
       title: 'Reservation Yield + Seating Window Optimizer',
@@ -269,6 +271,15 @@
 
   let selectedMvpVersion = 'v1';
   let shiftMode = false;
+  const voteStorageKey = 'la-truffe-mvp-votes-v1';
+  let voterName = 'host';
+  let voteNote = '';
+  let voteData = {
+    v1: { up: 0, down: 0 },
+    v2: { up: 0, down: 0 },
+    v3: { up: 0, down: 0 },
+    log: []
+  };
 
   let walkInName = 'Walk-in Guest';
   let walkInPartySize = 2;
@@ -321,6 +332,16 @@
   $: arrivalQueue = activeReservations.filter((r) => !r.assignedTableId && (r.status === 'arrived' || r.status === 'walk_in'));
 
   $: actionQueue = buildActionQueue(reservations);
+  $: versionScore = Object.fromEntries(
+    Object.keys(mvpVersions).map((key) => [key, voteData[key].up - voteData[key].down])
+  );
+  $: totalVotes = Object.keys(mvpVersions).reduce(
+    (sum, key) => sum + voteData[key].up + voteData[key].down,
+    0
+  );
+  $: currentVoteScore = versionScore[selectedMvpVersion];
+  $: currentVoteTotal =
+    voteData[selectedMvpVersion].up + voteData[selectedMvpVersion].down;
 
   function parseMinutes(hhmm) {
     const [h, m] = hhmm.split(':').map(Number);
@@ -513,6 +534,76 @@
     assignBestTable(item.reservationId);
   }
 
+  function recordVote(version, direction) {
+    voteData = {
+      ...voteData,
+      [version]: {
+        ...voteData[version],
+        [direction]: voteData[version][direction] + 1
+      },
+      log: [
+        {
+          at: new Date().toISOString(),
+          version,
+          direction,
+          rater: voterName || 'anonymous',
+          note: voteNote || ''
+        },
+        ...voteData.log
+      ]
+    };
+    voteNote = '';
+    persistVoteData();
+  }
+
+  function persistVoteData() {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(voteStorageKey, JSON.stringify(voteData));
+  }
+
+  function exportVotes() {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      score: versionScore,
+      totalVotes,
+      voteData
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json'
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `la-truffe-mvp-votes-${serviceConfig.date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function resetVotes() {
+    voteData = {
+      v1: { up: 0, down: 0 },
+      v2: { up: 0, down: 0 },
+      v3: { up: 0, down: 0 },
+      log: []
+    };
+    voteNote = '';
+    persistVoteData();
+  }
+
+  onMount(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem(voteStorageKey);
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed?.v1 && parsed?.v2 && parsed?.v3 && Array.isArray(parsed?.log)) {
+        voteData = parsed;
+      }
+    } catch (error) {
+      console.warn('Could not parse saved vote data:', error);
+    }
+  });
+
   window.addEventListener('hashchange', () => {
     route = readRoute();
   });
@@ -607,6 +698,47 @@
         {/each}
       </div>
       <p class="version-sub">{mvpVersions[selectedMvpVersion].description}</p>
+
+      <article class="vote-panel">
+        <div class="vote-head">
+          <h3>Version Voting</h3>
+          <p>
+            Current: {mvpVersions[selectedMvpVersion].title} | Score {currentVoteScore} from {currentVoteTotal} votes
+          </p>
+        </div>
+
+        <div class="vote-controls">
+          <div class="control">
+            <label for="voterName">Rater</label>
+            <input id="voterName" bind:value={voterName} />
+          </div>
+          <div class="control">
+            <label for="voteNote">Note (optional)</label>
+            <input id="voteNote" bind:value={voteNote} placeholder="e.g. easiest during rush" />
+          </div>
+          <div class="vote-actions">
+            <button class="action-btn slim" on:click={() => recordVote(selectedMvpVersion, 'up')}>
+              Vote Best Fit
+            </button>
+            <button class="action-btn slim" on:click={() => recordVote(selectedMvpVersion, 'down')}>
+              Vote Not Fit
+            </button>
+            <button class="action-btn slim" on:click={exportVotes}>Export JSON</button>
+            <button class="action-btn slim" on:click={resetVotes}>Reset</button>
+          </div>
+        </div>
+
+        <div class="vote-summary">
+          {#each Object.keys(mvpVersions) as key}
+            <div class={`vote-card ${selectedMvpVersion === key ? 'active' : ''}`}>
+              <p class="queue-title">{mvpVersions[key].title}</p>
+              <p class="queue-sub">
+                up {voteData[key].up} | down {voteData[key].down} | score {versionScore[key]}
+              </p>
+            </div>
+          {/each}
+        </div>
+      </article>
 
       <div class="board-metrics">
         <article>
