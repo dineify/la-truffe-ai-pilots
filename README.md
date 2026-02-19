@@ -15,6 +15,7 @@ The `kitchen-load` and `occasion-concierge` routes now include:
 - 3 prototype variants each (toggleable)
 - shift mode for each variant
 - interactive POC input controls and projected outputs
+- per-route version voting with local persistence and JSON export/reset
 
 ## Local dev
 

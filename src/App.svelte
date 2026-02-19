@@ -313,15 +313,18 @@
   let giftCertLeads = 16;
   let wineAttachRate = 28;
   let avgUpsellValue = 24;
-  const voteStorageKey = 'la-truffe-mvp-votes-v1';
-  let voterName = 'host';
-  let voteNote = '';
-  let voteData = {
-    v1: { up: 0, down: 0 },
-    v2: { up: 0, down: 0 },
-    v3: { up: 0, down: 0 },
-    log: []
+  const voteStorageKeys = {
+    reservation: 'la-truffe-mvp-votes-v1',
+    kitchen: 'la-truffe-kitchen-votes-v1',
+    occasion: 'la-truffe-occasion-votes-v1'
   };
+  let voterName = 'host';
+  let reservationVoteNote = '';
+  let kitchenVoteNote = '';
+  let occasionVoteNote = '';
+  let reservationVoteData = makeEmptyVoteData(mvpVersions);
+  let kitchenVoteData = makeEmptyVoteData(kitchenVersions);
+  let occasionVoteData = makeEmptyVoteData(occasionVersions);
 
   let walkInName = 'Walk-in Guest';
   let walkInPartySize = 2;
@@ -398,16 +401,26 @@
       : occasionLeadCount >= 30
         ? '3 outreach blocks per week'
         : '1-2 outreach blocks per week';
-  $: versionScore = Object.fromEntries(
-    Object.keys(mvpVersions).map((key) => [key, voteData[key].up - voteData[key].down])
-  );
-  $: totalVotes = Object.keys(mvpVersions).reduce(
-    (sum, key) => sum + voteData[key].up + voteData[key].down,
-    0
-  );
-  $: currentVoteScore = versionScore[selectedMvpVersion];
-  $: currentVoteTotal =
-    voteData[selectedMvpVersion].up + voteData[selectedMvpVersion].down;
+  $: reservationVersionScore = buildVoteScore(mvpVersions, reservationVoteData);
+  $: reservationTotalVotes = buildTotalVotes(mvpVersions, reservationVoteData);
+  $: reservationCurrentVoteScore = reservationVersionScore[selectedMvpVersion];
+  $: reservationCurrentVoteTotal =
+    reservationVoteData[selectedMvpVersion].up +
+    reservationVoteData[selectedMvpVersion].down;
+
+  $: kitchenVersionScore = buildVoteScore(kitchenVersions, kitchenVoteData);
+  $: kitchenTotalVotes = buildTotalVotes(kitchenVersions, kitchenVoteData);
+  $: kitchenCurrentVoteScore = kitchenVersionScore[selectedKitchenVersion];
+  $: kitchenCurrentVoteTotal =
+    kitchenVoteData[selectedKitchenVersion].up +
+    kitchenVoteData[selectedKitchenVersion].down;
+
+  $: occasionVersionScore = buildVoteScore(occasionVersions, occasionVoteData);
+  $: occasionTotalVotes = buildTotalVotes(occasionVersions, occasionVoteData);
+  $: occasionCurrentVoteScore = occasionVersionScore[selectedOccasionVersion];
+  $: occasionCurrentVoteTotal =
+    occasionVoteData[selectedOccasionVersion].up +
+    occasionVoteData[selectedOccasionVersion].down;
 
   function parseMinutes(hhmm) {
     const [h, m] = hhmm.split(':').map(Number);
@@ -600,12 +613,46 @@
     assignBestTable(item.reservationId);
   }
 
-  function recordVote(version, direction) {
-    voteData = {
-      ...voteData,
+  function makeEmptyVoteData(versionMap) {
+    const data = { log: [] };
+    Object.keys(versionMap).forEach((key) => {
+      data[key] = { up: 0, down: 0 };
+    });
+    return data;
+  }
+
+  function normalizeVoteData(saved, versionMap) {
+    const normalized = makeEmptyVoteData(versionMap);
+    if (!saved || typeof saved !== 'object') return normalized;
+    Object.keys(versionMap).forEach((key) => {
+      normalized[key] = {
+        up: Number(saved[key]?.up) || 0,
+        down: Number(saved[key]?.down) || 0
+      };
+    });
+    normalized.log = Array.isArray(saved.log) ? saved.log : [];
+    return normalized;
+  }
+
+  function buildVoteScore(versionMap, voteData) {
+    return Object.fromEntries(
+      Object.keys(versionMap).map((key) => [key, voteData[key].up - voteData[key].down])
+    );
+  }
+
+  function buildTotalVotes(versionMap, voteData) {
+    return Object.keys(versionMap).reduce(
+      (sum, key) => sum + voteData[key].up + voteData[key].down,
+      0
+    );
+  }
+
+  function buildVotedData(current, version, direction, note) {
+    return {
+      ...current,
       [version]: {
-        ...voteData[version],
-        [direction]: voteData[version][direction] + 1
+        ...current[version],
+        [direction]: current[version][direction] + 1
       },
       log: [
         {
@@ -613,24 +660,23 @@
           version,
           direction,
           rater: voterName || 'anonymous',
-          note: voteNote || ''
+          note: note || ''
         },
-        ...voteData.log
+        ...current.log
       ]
     };
-    voteNote = '';
-    persistVoteData();
   }
 
-  function persistVoteData() {
+  function persistScopedVoteData(scopeKey, data) {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(voteStorageKey, JSON.stringify(voteData));
+    window.localStorage.setItem(voteStorageKeys[scopeKey], JSON.stringify(data));
   }
 
-  function exportVotes() {
+  function exportScopedVotes(scopeKey, score, totalVotes, voteData) {
     const payload = {
+      scope: scopeKey,
       exportedAt: new Date().toISOString(),
-      score: versionScore,
+      score,
       totalVotes,
       voteData
     };
@@ -640,30 +686,76 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `la-truffe-mvp-votes-${serviceConfig.date}.json`;
+    a.download = `la-truffe-${scopeKey}-votes-${serviceConfig.date}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  function resetVotes() {
-    voteData = {
-      v1: { up: 0, down: 0 },
-      v2: { up: 0, down: 0 },
-      v3: { up: 0, down: 0 },
-      log: []
-    };
-    voteNote = '';
-    persistVoteData();
+  function recordReservationVote(direction) {
+    reservationVoteData = buildVotedData(
+      reservationVoteData,
+      selectedMvpVersion,
+      direction,
+      reservationVoteNote
+    );
+    reservationVoteNote = '';
+    persistScopedVoteData('reservation', reservationVoteData);
+  }
+
+  function recordKitchenVote(direction) {
+    kitchenVoteData = buildVotedData(
+      kitchenVoteData,
+      selectedKitchenVersion,
+      direction,
+      kitchenVoteNote
+    );
+    kitchenVoteNote = '';
+    persistScopedVoteData('kitchen', kitchenVoteData);
+  }
+
+  function recordOccasionVote(direction) {
+    occasionVoteData = buildVotedData(
+      occasionVoteData,
+      selectedOccasionVersion,
+      direction,
+      occasionVoteNote
+    );
+    occasionVoteNote = '';
+    persistScopedVoteData('occasion', occasionVoteData);
+  }
+
+  function resetReservationVotes() {
+    reservationVoteData = makeEmptyVoteData(mvpVersions);
+    reservationVoteNote = '';
+    persistScopedVoteData('reservation', reservationVoteData);
+  }
+
+  function resetKitchenVotes() {
+    kitchenVoteData = makeEmptyVoteData(kitchenVersions);
+    kitchenVoteNote = '';
+    persistScopedVoteData('kitchen', kitchenVoteData);
+  }
+
+  function resetOccasionVotes() {
+    occasionVoteData = makeEmptyVoteData(occasionVersions);
+    occasionVoteNote = '';
+    persistScopedVoteData('occasion', occasionVoteData);
   }
 
   onMount(() => {
     if (typeof window === 'undefined') return;
-    const saved = window.localStorage.getItem(voteStorageKey);
-    if (!saved) return;
     try {
-      const parsed = JSON.parse(saved);
-      if (parsed?.v1 && parsed?.v2 && parsed?.v3 && Array.isArray(parsed?.log)) {
-        voteData = parsed;
+      const savedReservation = window.localStorage.getItem(voteStorageKeys.reservation);
+      if (savedReservation) {
+        reservationVoteData = normalizeVoteData(JSON.parse(savedReservation), mvpVersions);
+      }
+      const savedKitchen = window.localStorage.getItem(voteStorageKeys.kitchen);
+      if (savedKitchen) {
+        kitchenVoteData = normalizeVoteData(JSON.parse(savedKitchen), kitchenVersions);
+      }
+      const savedOccasion = window.localStorage.getItem(voteStorageKeys.occasion);
+      if (savedOccasion) {
+        occasionVoteData = normalizeVoteData(JSON.parse(savedOccasion), occasionVersions);
       }
     } catch (error) {
       console.warn('Could not parse saved vote data:', error);
@@ -769,28 +861,28 @@
         <div class="vote-head">
           <h3>Version Voting</h3>
           <p>
-            Current: {mvpVersions[selectedMvpVersion].title} | Score {currentVoteScore} from {currentVoteTotal} votes
+            Current: {mvpVersions[selectedMvpVersion].title} | Score {reservationCurrentVoteScore} from {reservationCurrentVoteTotal} votes
           </p>
         </div>
 
         <div class="vote-controls">
           <div class="control">
-            <label for="voterName">Rater</label>
-            <input id="voterName" bind:value={voterName} />
+            <label for="reservationVoterName">Rater</label>
+            <input id="reservationVoterName" bind:value={voterName} />
           </div>
           <div class="control">
-            <label for="voteNote">Note (optional)</label>
-            <input id="voteNote" bind:value={voteNote} placeholder="e.g. easiest during rush" />
+            <label for="reservationVoteNote">Note (optional)</label>
+            <input id="reservationVoteNote" bind:value={reservationVoteNote} placeholder="e.g. easiest during rush" />
           </div>
           <div class="vote-actions">
-            <button class="action-btn slim" on:click={() => recordVote(selectedMvpVersion, 'up')}>
+            <button class="action-btn slim" on:click={() => recordReservationVote('up')}>
               Vote Best Fit
             </button>
-            <button class="action-btn slim" on:click={() => recordVote(selectedMvpVersion, 'down')}>
+            <button class="action-btn slim" on:click={() => recordReservationVote('down')}>
               Vote Not Fit
             </button>
-            <button class="action-btn slim" on:click={exportVotes}>Export JSON</button>
-            <button class="action-btn slim" on:click={resetVotes}>Reset</button>
+            <button class="action-btn slim" on:click={() => exportScopedVotes('reservation', reservationVersionScore, reservationTotalVotes, reservationVoteData)}>Export JSON</button>
+            <button class="action-btn slim" on:click={resetReservationVotes}>Reset</button>
           </div>
         </div>
 
@@ -799,7 +891,7 @@
             <div class={`vote-card ${selectedMvpVersion === key ? 'active' : ''}`}>
               <p class="queue-title">{mvpVersions[key].title}</p>
               <p class="queue-sub">
-                up {voteData[key].up} | down {voteData[key].down} | score {versionScore[key]}
+                up {reservationVoteData[key].up} | down {reservationVoteData[key].down} | score {reservationVersionScore[key]}
               </p>
             </div>
           {/each}
@@ -1087,6 +1179,41 @@
       </div>
       <p class="version-sub">{kitchenVersions[selectedKitchenVersion].description}</p>
 
+      <article class="vote-panel">
+        <div class="vote-head">
+          <h3>Version Voting</h3>
+          <p>
+            Current: {kitchenVersions[selectedKitchenVersion].title} | Score {kitchenCurrentVoteScore} from {kitchenCurrentVoteTotal} votes
+          </p>
+        </div>
+        <div class="vote-controls">
+          <div class="control">
+            <label for="kitchenVoterName">Rater</label>
+            <input id="kitchenVoterName" bind:value={voterName} />
+          </div>
+          <div class="control">
+            <label for="kitchenVoteNote">Note (optional)</label>
+            <input id="kitchenVoteNote" bind:value={kitchenVoteNote} placeholder="e.g. clearest for expo" />
+          </div>
+          <div class="vote-actions">
+            <button class="action-btn slim" on:click={() => recordKitchenVote('up')}>Vote Best Fit</button>
+            <button class="action-btn slim" on:click={() => recordKitchenVote('down')}>Vote Not Fit</button>
+            <button class="action-btn slim" on:click={() => exportScopedVotes('kitchen', kitchenVersionScore, kitchenTotalVotes, kitchenVoteData)}>Export JSON</button>
+            <button class="action-btn slim" on:click={resetKitchenVotes}>Reset</button>
+          </div>
+        </div>
+        <div class="vote-summary">
+          {#each Object.keys(kitchenVersions) as key}
+            <div class={`vote-card ${selectedKitchenVersion === key ? 'active' : ''}`}>
+              <p class="queue-title">{kitchenVersions[key].title}</p>
+              <p class="queue-sub">
+                up {kitchenVoteData[key].up} | down {kitchenVoteData[key].down} | score {kitchenVersionScore[key]}
+              </p>
+            </div>
+          {/each}
+        </div>
+      </article>
+
       <div class="sim-grid">
         <article>
           <h3>Tonight Inputs</h3>
@@ -1179,6 +1306,41 @@
         {/each}
       </div>
       <p class="version-sub">{occasionVersions[selectedOccasionVersion].description}</p>
+
+      <article class="vote-panel">
+        <div class="vote-head">
+          <h3>Version Voting</h3>
+          <p>
+            Current: {occasionVersions[selectedOccasionVersion].title} | Score {occasionCurrentVoteScore} from {occasionCurrentVoteTotal} votes
+          </p>
+        </div>
+        <div class="vote-controls">
+          <div class="control">
+            <label for="occasionVoterName">Rater</label>
+            <input id="occasionVoterName" bind:value={voterName} />
+          </div>
+          <div class="control">
+            <label for="occasionVoteNote">Note (optional)</label>
+            <input id="occasionVoteNote" bind:value={occasionVoteNote} placeholder="e.g. strongest guest touch" />
+          </div>
+          <div class="vote-actions">
+            <button class="action-btn slim" on:click={() => recordOccasionVote('up')}>Vote Best Fit</button>
+            <button class="action-btn slim" on:click={() => recordOccasionVote('down')}>Vote Not Fit</button>
+            <button class="action-btn slim" on:click={() => exportScopedVotes('occasion', occasionVersionScore, occasionTotalVotes, occasionVoteData)}>Export JSON</button>
+            <button class="action-btn slim" on:click={resetOccasionVotes}>Reset</button>
+          </div>
+        </div>
+        <div class="vote-summary">
+          {#each Object.keys(occasionVersions) as key}
+            <div class={`vote-card ${selectedOccasionVersion === key ? 'active' : ''}`}>
+              <p class="queue-title">{occasionVersions[key].title}</p>
+              <p class="queue-sub">
+                up {occasionVoteData[key].up} | down {occasionVoteData[key].down} | score {occasionVersionScore[key]}
+              </p>
+            </div>
+          {/each}
+        </div>
+      </article>
 
       <div class="sim-grid">
         <article>
