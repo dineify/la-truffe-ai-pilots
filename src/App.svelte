@@ -72,6 +72,34 @@
       description: 'Prioritized action feed for host decisions in order.'
     }
   };
+  const kitchenVersions = {
+    kv1: {
+      title: 'K1 Load Heatmap',
+      description: 'Forecast congestion by 30-minute window and auto-set to-go policy.'
+    },
+    kv2: {
+      title: 'K2 Ticket Triage',
+      description: 'Queue tickets by promise time and kitchen station pressure.'
+    },
+    kv3: {
+      title: 'K3 Service Guardrails',
+      description: 'Rules engine for when to throttle, pause, or reopen to-go.'
+    }
+  };
+  const occasionVersions = {
+    ov1: {
+      title: 'O1 Occasion Detection',
+      description: 'Flag likely anniversary/birthday guests and suggest outreach.'
+    },
+    ov2: {
+      title: 'O2 Concierge Playbook',
+      description: 'Generate host scripts for reservation notes + gift certificate moments.'
+    },
+    ov3: {
+      title: 'O3 Wine + Package Upsell',
+      description: 'Recommend pairing bundles and timing for upsell prompts.'
+    }
+  };
 
   const statusMeta = {
     booked: { label: 'Booked', className: 'st-booked' },
@@ -271,6 +299,20 @@
 
   let selectedMvpVersion = 'v1';
   let shiftMode = false;
+  let selectedKitchenVersion = 'kv1';
+  let kitchenShiftMode = false;
+  let selectedOccasionVersion = 'ov1';
+  let occasionShiftMode = false;
+
+  let dineInCovers = 58;
+  let toGoOrders = 24;
+  let kitchenStaff = 6;
+  let avgTicketMinutes = 18;
+
+  let weeklyGuests = 190;
+  let giftCertLeads = 16;
+  let wineAttachRate = 28;
+  let avgUpsellValue = 24;
   const voteStorageKey = 'la-truffe-mvp-votes-v1';
   let voterName = 'host';
   let voteNote = '';
@@ -332,6 +374,30 @@
   $: arrivalQueue = activeReservations.filter((r) => !r.assignedTableId && (r.status === 'arrived' || r.status === 'walk_in'));
 
   $: actionQueue = buildActionQueue(reservations);
+  $: projectedKitchenWorkUnits = Math.round(
+    dineInCovers * 1.1 + toGoOrders * 0.9 + avgTicketMinutes * 2
+  );
+  $: loadPerStaff = Math.round(projectedKitchenWorkUnits / Math.max(1, kitchenStaff));
+  $: toGoPolicy =
+    loadPerStaff >= 28
+      ? 'Pause to-go for 45 minutes'
+      : loadPerStaff >= 22
+        ? 'Limit to-go to scheduled pickup windows'
+        : 'Accept to-go orders normally';
+  $: kitchenRiskLabel =
+    loadPerStaff >= 28 ? 'High Strain' : loadPerStaff >= 22 ? 'Elevated' : 'Stable';
+
+  $: occasionLeadCount = Math.round(weeklyGuests * 0.16 + giftCertLeads);
+  $: projectedOccasionConversions = Math.round(occasionLeadCount * 0.3);
+  $: projectedUpsellRevenue = Math.round(
+    projectedOccasionConversions * avgUpsellValue + weeklyGuests * (wineAttachRate / 100) * 7
+  );
+  $: outreachCadence =
+    occasionLeadCount >= 45
+      ? 'Daily concierge outreach blocks'
+      : occasionLeadCount >= 30
+        ? '3 outreach blocks per week'
+        : '1-2 outreach blocks per week';
   $: versionScore = Object.fromEntries(
     Object.keys(mvpVersions).map((key) => [key, voteData[key].up - voteData[key].down])
   );
@@ -997,6 +1063,193 @@
           </p>
         </article>
       </div>
+    </section>
+  {/if}
+
+  {#if route === 'kitchen-load'}
+    <section class={`card prototype reservation-mvp ${kitchenShiftMode ? 'shift' : ''}`}>
+      <div class="mvp-top-row">
+        <div>
+          <h2>Kitchen Load POC Variants</h2>
+          <p class="one-liner">Three prototype approaches for handling to-go vs dine-in strain.</p>
+        </div>
+        <button class={`mode-toggle ${kitchenShiftMode ? 'on' : ''}`} on:click={() => (kitchenShiftMode = !kitchenShiftMode)}>
+          Shift Mode: {kitchenShiftMode ? 'ON' : 'OFF'}
+        </button>
+      </div>
+
+      <div class="version-tabs">
+        {#each Object.keys(kitchenVersions) as key}
+          <button class:active={selectedKitchenVersion === key} on:click={() => (selectedKitchenVersion = key)}>
+            {kitchenVersions[key].title}
+          </button>
+        {/each}
+      </div>
+      <p class="version-sub">{kitchenVersions[selectedKitchenVersion].description}</p>
+
+      <div class="sim-grid">
+        <article>
+          <h3>Tonight Inputs</h3>
+          <div class="control">
+            <label for="dineInCovers">Expected dine-in covers</label>
+            <input id="dineInCovers" type="number" min="1" bind:value={dineInCovers} />
+          </div>
+          <div class="control">
+            <label for="toGoOrders">Expected to-go orders</label>
+            <input id="toGoOrders" type="number" min="0" bind:value={toGoOrders} />
+          </div>
+          <div class="control">
+            <label for="kitchenStaff">Kitchen staff on line</label>
+            <input id="kitchenStaff" type="number" min="1" bind:value={kitchenStaff} />
+          </div>
+          <div class="control">
+            <label for="avgTicketMinutes">Average ticket minutes</label>
+            <input id="avgTicketMinutes" type="number" min="8" bind:value={avgTicketMinutes} />
+          </div>
+        </article>
+        <article>
+          <h3>POC Output</h3>
+          <p class="result-note">Load per staff: <strong>{loadPerStaff}</strong> ({kitchenRiskLabel})</p>
+          <p class="result-note">Recommended policy: <strong>{toGoPolicy}</strong></p>
+          <p class="result-note">Work units tonight: <strong>{projectedKitchenWorkUnits}</strong></p>
+        </article>
+      </div>
+
+      {#if selectedKitchenVersion === 'kv1'}
+        <article class="proto-card">
+          <h3>K1 Workflow</h3>
+          <ul>
+            <li>Build 30-minute service load heatmap from reservations + active to-go queue.</li>
+            <li>Color blocks red/yellow/green with recommended to-go acceptance state.</li>
+            <li>Auto-generate website/phone cutoff message for current hour.</li>
+          </ul>
+          {#if kitchenShiftMode}
+            <p class="shift-note">Shift mode: one status banner only: `OPEN`, `LIMITED`, `PAUSED`.</p>
+          {/if}
+        </article>
+      {/if}
+
+      {#if selectedKitchenVersion === 'kv2'}
+        <article class="proto-card">
+          <h3>K2 Workflow</h3>
+          <ul>
+            <li>Split queue into dine-in and to-go ticket lanes with SLA timers.</li>
+            <li>Rank tickets by promise time breach risk and station contention.</li>
+            <li>Recommend ticket resequencing to protect in-house experience first.</li>
+          </ul>
+          {#if kitchenShiftMode}
+            <p class="shift-note">Shift mode: three one-tap actions: `Rush Dine-In`, `Hold To-Go`, `Resume To-Go`.</p>
+          {/if}
+        </article>
+      {/if}
+
+      {#if selectedKitchenVersion === 'kv3'}
+        <article class="proto-card">
+          <h3>K3 Workflow</h3>
+          <ul>
+            <li>Use guardrails: if load/staff crosses threshold, pause to-go for defined window.</li>
+            <li>Reopen automatically once backlog and ticket minutes normalize.</li>
+            <li>Log each pause/reopen decision for post-shift tuning.</li>
+          </ul>
+          {#if kitchenShiftMode}
+            <p class="shift-note">Shift mode: guardrail alerts only; no manual tuning fields visible.</p>
+          {/if}
+        </article>
+      {/if}
+    </section>
+  {/if}
+
+  {#if route === 'occasion-concierge'}
+    <section class={`card prototype reservation-mvp ${occasionShiftMode ? 'shift' : ''}`}>
+      <div class="mvp-top-row">
+        <div>
+          <h2>Occasion Concierge POC Variants</h2>
+          <p class="one-liner">Three prototypes to grow repeat bookings and higher-value occasion spend.</p>
+        </div>
+        <button class={`mode-toggle ${occasionShiftMode ? 'on' : ''}`} on:click={() => (occasionShiftMode = !occasionShiftMode)}>
+          Shift Mode: {occasionShiftMode ? 'ON' : 'OFF'}
+        </button>
+      </div>
+
+      <div class="version-tabs">
+        {#each Object.keys(occasionVersions) as key}
+          <button class:active={selectedOccasionVersion === key} on:click={() => (selectedOccasionVersion = key)}>
+            {occasionVersions[key].title}
+          </button>
+        {/each}
+      </div>
+      <p class="version-sub">{occasionVersions[selectedOccasionVersion].description}</p>
+
+      <div class="sim-grid">
+        <article>
+          <h3>Weekly Inputs</h3>
+          <div class="control">
+            <label for="weeklyGuests">Weekly guests</label>
+            <input id="weeklyGuests" type="number" min="10" bind:value={weeklyGuests} />
+          </div>
+          <div class="control">
+            <label for="giftCertLeads">Gift certificate leads</label>
+            <input id="giftCertLeads" type="number" min="0" bind:value={giftCertLeads} />
+          </div>
+          <div class="control">
+            <label for="wineAttachRate">Current wine attach rate (%)</label>
+            <input id="wineAttachRate" type="number" min="0" max="100" bind:value={wineAttachRate} />
+          </div>
+          <div class="control">
+            <label for="avgUpsellValue">Avg upsell value ($)</label>
+            <input id="avgUpsellValue" type="number" min="5" bind:value={avgUpsellValue} />
+          </div>
+        </article>
+        <article>
+          <h3>POC Output</h3>
+          <p class="result-note">Occasion outreach leads: <strong>{occasionLeadCount}</strong></p>
+          <p class="result-note">Projected conversions: <strong>{projectedOccasionConversions}</strong></p>
+          <p class="result-note">Projected weekly lift: <strong>${projectedUpsellRevenue.toLocaleString()}</strong></p>
+          <p class="result-note">Cadence: <strong>{outreachCadence}</strong></p>
+        </article>
+      </div>
+
+      {#if selectedOccasionVersion === 'ov1'}
+        <article class="proto-card">
+          <h3>O1 Workflow</h3>
+          <ul>
+            <li>Parse reservation notes and past visits to detect likely occasions.</li>
+            <li>Generate daily “occasion shortlist” for host follow-up.</li>
+            <li>Flag guests most likely to respond to personalized confirmation.</li>
+          </ul>
+          {#if occasionShiftMode}
+            <p class="shift-note">Shift mode: only shortlist and one-tap mark `contacted`.</p>
+          {/if}
+        </article>
+      {/if}
+
+      {#if selectedOccasionVersion === 'ov2'}
+        <article class="proto-card">
+          <h3>O2 Workflow</h3>
+          <ul>
+            <li>Create script templates by occasion type (anniversary, birthday, business).</li>
+            <li>Auto-fill guest context, preferred seating, and suggested timing.</li>
+            <li>Track script performance by booking confirmation rate.</li>
+          </ul>
+          {#if occasionShiftMode}
+            <p class="shift-note">Shift mode: large-script cards for quick host reads during calls.</p>
+          {/if}
+        </article>
+      {/if}
+
+      {#if selectedOccasionVersion === 'ov3'}
+        <article class="proto-card">
+          <h3>O3 Workflow</h3>
+          <ul>
+            <li>Recommend pairing bundles based on party size and occasion type.</li>
+            <li>Generate pre-arrival prompts and server handoff notes.</li>
+            <li>Measure uplift from wine attach and special package acceptance.</li>
+          </ul>
+          {#if occasionShiftMode}
+            <p class="shift-note">Shift mode: show only best upsell bundle + fallback option.</p>
+          {/if}
+        </article>
+      {/if}
     </section>
   {/if}
 </main>

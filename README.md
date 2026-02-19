@@ -11,6 +11,11 @@ The `reservation-yield` route now includes a day-of MVP reservation board with:
 - walk-in capture
 - nightly agent call list and load curve preview
 
+The `kitchen-load` and `occasion-concierge` routes now include:
+- 3 prototype variants each (toggleable)
+- shift mode for each variant
+- interactive POC input controls and projected outputs
+
 ## Local dev
 
 ```bash
