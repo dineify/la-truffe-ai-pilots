@@ -56,6 +56,21 @@
     'occasion-concierge': 'Occasion Concierge'
   };
 
+  const mvpVersions = {
+    v1: {
+      title: 'V1 Control Board',
+      description: 'Timeline + selected reservation detail + suggested placements.'
+    },
+    v2: {
+      title: 'V2 Floor-First Board',
+      description: 'Table occupancy first; assign from unassigned queue.'
+    },
+    v3: {
+      title: 'V3 Action Queue',
+      description: 'Prioritized action feed for host decisions in order.'
+    }
+  };
+
   const statusMeta = {
     booked: { label: 'Booked', className: 'st-booked' },
     confirmed: { label: 'Confirmed', className: 'st-confirmed' },
@@ -252,6 +267,9 @@
   let events = structuredClone(baseEvents);
   let selectedReservationId = reservations[0]?.id ?? null;
 
+  let selectedMvpVersion = 'v1';
+  let shiftMode = false;
+
   let walkInName = 'Walk-in Guest';
   let walkInPartySize = 2;
 
@@ -264,11 +282,12 @@
 
   $: selectedReservation = reservations.find((r) => r.id === selectedReservationId) ?? null;
   $: sortedReservations = [...reservations].sort((a, b) => a.reservationTime.localeCompare(b.reservationTime));
+  $: activeReservations = sortedReservations.filter((r) => ['booked', 'confirmed', 'arrived', 'seated', 'walk_in', 'late'].includes(r.status));
   $: atRiskReservations = sortedReservations.filter(
     (r) => (r.status === 'booked' || r.status === 'confirmed') && r.noShowRisk >= 0.35
   );
   $: upcomingUnassigned = sortedReservations.filter(
-    (r) => (r.status === 'booked' || r.status === 'confirmed') && !r.assignedTableId
+    (r) => (r.status === 'booked' || r.status === 'confirmed' || r.status === 'walk_in' || r.status === 'arrived') && !r.assignedTableId
   );
 
   $: predictedNoShows = primeReservations * (predictedNoShowRate / 100);
@@ -294,8 +313,14 @@
     .reduce((sum, r) => sum + Math.round(r.partySize * r.noShowRisk), 0);
 
   $: recommendedCallList = atRiskReservations.slice(0, 4);
-
   $: suggestedTables = selectedReservation ? suggestTables(selectedReservation, tables, reservations) : [];
+  $: tablesByZone = ['main', 'patio', 'bar'].map((zone) => ({
+    zone,
+    tables: tables.filter((t) => t.zone === zone)
+  }));
+  $: arrivalQueue = activeReservations.filter((r) => !r.assignedTableId && (r.status === 'arrived' || r.status === 'walk_in'));
+
+  $: actionQueue = buildActionQueue(reservations);
 
   function parseMinutes(hhmm) {
     const [h, m] = hhmm.split(':').map(Number);
@@ -320,16 +345,19 @@
     return slots;
   }
 
-  function tableById(id) {
-    return tables.find((t) => t.id === id);
+  function suggestionConflict(a, b) {
+    return (
+      isWithinWindow(a.reservationTime, b.reservationTime, serviceConfig.turnMinutes) ||
+      isWithinWindow(b.reservationTime, a.reservationTime, serviceConfig.turnMinutes)
+    );
   }
 
   function suggestTables(reservation, allTables, allReservations) {
     const usedTableIds = new Set(
       allReservations
         .filter((r) => r.id !== reservation.id)
-        .filter((r) => ['booked', 'confirmed', 'arrived', 'seated', 'walk_in'].includes(r.status))
-        .filter((r) => isWithinWindow(r.reservationTime, reservation.reservationTime, serviceConfig.turnMinutes) || isWithinWindow(reservation.reservationTime, r.reservationTime, serviceConfig.turnMinutes))
+        .filter((r) => ['booked', 'confirmed', 'arrived', 'seated', 'walk_in', 'late'].includes(r.status))
+        .filter((r) => suggestionConflict(r, reservation))
         .map((r) => r.assignedTableId)
         .filter(Boolean)
     );
@@ -348,6 +376,10 @@
       .slice(0, 4);
   }
 
+  function findReservationOnTable(tableId) {
+    return activeReservations.find((r) => r.assignedTableId === tableId && r.status !== 'no_show' && r.status !== 'cancelled');
+  }
+
   function assignTable(reservationId, tableId) {
     reservations = reservations.map((r) =>
       r.id === reservationId ? { ...r, assignedTableId: tableId } : r
@@ -363,6 +395,13 @@
       },
       ...events
     ];
+  }
+
+  function assignBestTable(reservationId) {
+    const reservation = reservations.find((r) => r.id === reservationId);
+    if (!reservation) return;
+    const best = suggestTables(reservation, tables, reservations)[0];
+    if (best) assignTable(reservationId, best.id);
   }
 
   function updateReservationStatus(reservationId, nextStatus) {
@@ -424,6 +463,54 @@
     selectedReservationId = newId;
     walkInName = 'Walk-in Guest';
     walkInPartySize = 2;
+  }
+
+  function buildActionQueue(allReservations) {
+    const queue = [];
+    allReservations.forEach((r) => {
+      if ((r.status === 'booked' || r.status === 'confirmed') && r.noShowRisk >= 0.45) {
+        queue.push({
+          id: `risk-${r.id}`,
+          priority: 1,
+          label: 'Call to confirm high-risk no-show',
+          reservationId: r.id,
+          reservation: r,
+          action: 'confirm_call'
+        });
+      }
+
+      if ((r.status === 'arrived' || r.status === 'walk_in') && !r.assignedTableId) {
+        queue.push({
+          id: `seat-${r.id}`,
+          priority: 0,
+          label: 'Seat now: guest already at host stand',
+          reservationId: r.id,
+          reservation: r,
+          action: 'assign_table'
+        });
+      }
+
+      if ((r.status === 'booked' || r.status === 'confirmed') && !r.assignedTableId) {
+        queue.push({
+          id: `assign-${r.id}`,
+          priority: 2,
+          label: 'Pre-assign table before rush',
+          reservationId: r.id,
+          reservation: r,
+          action: 'assign_table'
+        });
+      }
+    });
+
+    return queue.sort((a, b) => a.priority - b.priority || a.reservation.reservationTime.localeCompare(b.reservation.reservationTime));
+  }
+
+  function markActionDone(item) {
+    if (item.action === 'confirm_call') {
+      updateReservationStatus(item.reservationId, 'confirmed');
+      return;
+    }
+    assignBestTable(item.reservationId);
   }
 
   window.addEventListener('hashchange', () => {
@@ -501,11 +588,25 @@
       <pre>{JSON.stringify(reservationModelExample, null, 2)}</pre>
     </section>
 
-    <section class="card prototype">
-      <h2>Day-Of Reservation Board (Build Tonight)</h2>
-      <p class="one-liner">
-        Real-time control surface for host stand: assignments, status changes, no-show risk, and quick walk-ins.
-      </p>
+    <section class={`card prototype reservation-mvp ${shiftMode ? 'shift' : ''}`}>
+      <div class="mvp-top-row">
+        <div>
+          <h2>Reservation Board MVP Variants</h2>
+          <p class="one-liner">Toggle versions and test which workflow staff prefers in real service.</p>
+        </div>
+        <button class={`mode-toggle ${shiftMode ? 'on' : ''}`} on:click={() => (shiftMode = !shiftMode)}>
+          Shift Mode: {shiftMode ? 'ON' : 'OFF'}
+        </button>
+      </div>
+
+      <div class="version-tabs">
+        {#each Object.keys(mvpVersions) as key}
+          <button class:active={selectedMvpVersion === key} on:click={() => (selectedMvpVersion = key)}>
+            {mvpVersions[key].title}
+          </button>
+        {/each}
+      </div>
+      <p class="version-sub">{mvpVersions[selectedMvpVersion].description}</p>
 
       <div class="board-metrics">
         <article>
@@ -526,111 +627,193 @@
         </article>
       </div>
 
-      <div class="board-grid">
-        <article>
-          <h3>Reservations Timeline</h3>
-          <div class="res-list">
-            {#each sortedReservations as res}
-              <button
-                class="res-item"
-                class:selected={selectedReservationId === res.id}
-                on:click={() => (selectedReservationId = res.id)}
-              >
-                <div>
-                  <p class="res-time">{res.reservationTime}</p>
-                  <p class="res-name">{res.guestName} ({res.partySize})</p>
-                </div>
-                <div class="res-meta">
-                  <span class={`status-pill ${statusMeta[res.status]?.className || ''}`}>
-                    {statusMeta[res.status]?.label || res.status}
-                  </span>
-                  <span class="risk">Risk {(res.noShowRisk * 100).toFixed(0)}%</span>
-                </div>
-              </button>
-            {/each}
-          </div>
+      {#if selectedMvpVersion === 'v1'}
+        {#if shiftMode}
+          <div class="shift-note">Shift mode: bigger touch targets, minimal context, fastest actions.</div>
+        {/if}
 
-          <h3 class="section-gap">Add Walk-In</h3>
-          <div class="control">
-            <label for="walkInName">Guest / label</label>
-            <input id="walkInName" bind:value={walkInName} />
-          </div>
-          <div class="control">
-            <label for="walkInPartySize">Party size</label>
-            <input id="walkInPartySize" type="number" min="1" max="12" bind:value={walkInPartySize} />
-          </div>
-          <button class="action-btn" on:click={addWalkIn}>Add Walk-In Now</button>
-        </article>
-
-        <article>
-          {#if selectedReservation}
-            <h3>Selected Reservation</h3>
-            <p class="selected-heading">
-              {selectedReservation.guestName} at {selectedReservation.reservationTime} (party {selectedReservation.partySize})
-            </p>
-            <p class="selected-detail">
-              Source: {selectedReservation.source} | Occasion: {selectedReservation.occasion}
-            </p>
-            <p class="selected-detail">Notes: {selectedReservation.notes}</p>
-            <p class="selected-detail">
-              Current table: {selectedReservation.assignedTableId || 'Unassigned'}
-            </p>
-
-            <h3 class="section-gap">Quick Status Actions</h3>
-            <div class="status-actions">
-              <button on:click={() => updateReservationStatus(selectedReservation.id, 'arrived')}>Mark Arrived</button>
-              <button on:click={() => updateReservationStatus(selectedReservation.id, 'seated')}>Mark Seated</button>
-              <button on:click={() => updateReservationStatus(selectedReservation.id, 'late')}>Mark Late</button>
-              <button on:click={() => updateReservationStatus(selectedReservation.id, 'no_show')}>Mark No Show</button>
-              <button on:click={() => updateReservationStatus(selectedReservation.id, 'cancelled')}>Cancel</button>
+        <div class="board-grid">
+          <article>
+            <h3>Reservations Timeline</h3>
+            <div class="res-list">
+              {#each sortedReservations as res}
+                <button
+                  class="res-item"
+                  class:selected={selectedReservationId === res.id}
+                  on:click={() => (selectedReservationId = res.id)}
+                >
+                  <div>
+                    <p class="res-time">{res.reservationTime}</p>
+                    <p class="res-name">{res.guestName} ({res.partySize})</p>
+                  </div>
+                  <div class="res-meta">
+                    <span class={`status-pill ${statusMeta[res.status]?.className || ''}`}>
+                      {statusMeta[res.status]?.label || res.status}
+                    </span>
+                    <span class="risk">Risk {(res.noShowRisk * 100).toFixed(0)}%</span>
+                  </div>
+                </button>
+              {/each}
             </div>
 
-            <h3 class="section-gap">Suggested Table Placements</h3>
-            <div class="table-suggest-list">
-              {#each suggestedTables as t}
-                <div class="table-suggest">
-                  <div>
-                    <p class="table-line">{t.label} | {t.zone} | {t.seats} seats</p>
-                    <p class="table-sub">
-                      {t.status}, next {t.nextAvailableAt}{#if t.usedSoon} (conflict risk){/if}
-                    </p>
+            <h3 class="section-gap">Add Walk-In</h3>
+            <div class="control">
+              <label for="walkInName">Guest / label</label>
+              <input id="walkInName" bind:value={walkInName} />
+            </div>
+            <div class="control">
+              <label for="walkInPartySize">Party size</label>
+              <input id="walkInPartySize" type="number" min="1" max="12" bind:value={walkInPartySize} />
+            </div>
+            <button class="action-btn" on:click={addWalkIn}>Add Walk-In Now</button>
+          </article>
+
+          <article>
+            {#if selectedReservation}
+              <h3>Selected Reservation</h3>
+              <p class="selected-heading">
+                {selectedReservation.guestName} at {selectedReservation.reservationTime} (party {selectedReservation.partySize})
+              </p>
+              {#if !shiftMode}
+                <p class="selected-detail">
+                  Source: {selectedReservation.source} | Occasion: {selectedReservation.occasion}
+                </p>
+                <p class="selected-detail">Notes: {selectedReservation.notes}</p>
+              {/if}
+              <p class="selected-detail">Current table: {selectedReservation.assignedTableId || 'Unassigned'}</p>
+
+              <h3 class="section-gap">Quick Status Actions</h3>
+              <div class="status-actions">
+                <button on:click={() => updateReservationStatus(selectedReservation.id, 'arrived')}>Arrived</button>
+                <button on:click={() => updateReservationStatus(selectedReservation.id, 'seated')}>Seated</button>
+                <button on:click={() => updateReservationStatus(selectedReservation.id, 'late')}>Late</button>
+                <button on:click={() => updateReservationStatus(selectedReservation.id, 'no_show')}>No Show</button>
+                <button on:click={() => updateReservationStatus(selectedReservation.id, 'cancelled')}>Cancel</button>
+              </div>
+
+              <h3 class="section-gap">Suggested Table Placements</h3>
+              <div class="table-suggest-list">
+                {#each suggestedTables as t}
+                  <div class="table-suggest">
+                    <div>
+                      <p class="table-line">{t.label} | {t.zone} | {t.seats} seats</p>
+                      <p class="table-sub">
+                        {t.status}, next {t.nextAvailableAt}{#if t.usedSoon} (conflict risk){/if}
+                      </p>
+                    </div>
+                    <button class="action-btn slim" on:click={() => assignTable(selectedReservation.id, t.id)}>
+                      Assign
+                    </button>
                   </div>
-                  <button class="action-btn slim" on:click={() => assignTable(selectedReservation.id, t.id)}>
-                    Assign
-                  </button>
+                {/each}
+              </div>
+            {:else}
+              <p>Select a reservation to start.</p>
+            {/if}
+          </article>
+        </div>
+      {/if}
+
+      {#if selectedMvpVersion === 'v2'}
+        {#if shiftMode}
+          <div class="shift-note">Shift mode: table cards + one-tap seat from queue.</div>
+        {/if}
+
+        <div class="board-grid secondary">
+          <article>
+            <h3>Unassigned / Arrivals Queue</h3>
+            <div class="queue-list">
+              {#each upcomingUnassigned as res}
+                <div class="queue-item">
+                  <div>
+                    <p class="queue-title">{res.reservationTime} - {res.guestName} ({res.partySize})</p>
+                    <p class="queue-sub">{statusMeta[res.status]?.label} | risk {(res.noShowRisk * 100).toFixed(0)}%</p>
+                  </div>
+                  <div class="queue-actions">
+                    <button class="action-btn slim" on:click={() => assignBestTable(res.id)}>Assign Best</button>
+                    <button class="action-btn slim" on:click={() => (selectedReservationId = res.id)}>Open</button>
+                  </div>
                 </div>
               {/each}
             </div>
-          {:else}
-            <p>Select a reservation to start.</p>
-          {/if}
-        </article>
-      </div>
+          </article>
 
-      <div class="board-grid secondary">
-        <article>
-          <h3>Nightly Agent Call List (High Risk)</h3>
-          <ul>
-            {#each recommendedCallList as res}
-              <li>
-                {res.reservationTime} - {res.guestName} ({res.partySize}) risk {(res.noShowRisk * 100).toFixed(0)}%
-              </li>
-            {/each}
-          </ul>
-        </article>
-
-        <article>
-          <h3>Load Curve (30-Min Slots)</h3>
-          <div class="slot-grid">
-            {#each slotLoad as slot}
-              <div class="slot-chip" class:hot={slot.covers >= 18}>
-                <span>{slot.slot}</span>
-                <strong>{slot.covers}</strong>
+          <article>
+            <h3>Floor Overview by Zone</h3>
+            {#each tablesByZone as zoneGroup}
+              <h4>{zoneGroup.zone}</h4>
+              <div class="table-cards">
+                {#each zoneGroup.tables as t}
+                  {@const assigned = findReservationOnTable(t.id)}
+                  <div class={`table-card ${t.status}`}>
+                    <p class="table-line">{t.label} ({t.seats})</p>
+                    <p class="table-sub">{t.status} | next {t.nextAvailableAt}</p>
+                    {#if assigned}
+                      <p class="queue-title">{assigned.guestName} ({assigned.partySize})</p>
+                      <p class="queue-sub">{assigned.reservationTime} | {statusMeta[assigned.status]?.label}</p>
+                    {:else}
+                      <p class="queue-sub">No assignment</p>
+                    {/if}
+                  </div>
+                {/each}
               </div>
             {/each}
-          </div>
-        </article>
-      </div>
+          </article>
+        </div>
+      {/if}
+
+      {#if selectedMvpVersion === 'v3'}
+        {#if shiftMode}
+          <div class="shift-note">Shift mode: action queue only, no deep drill-down.</div>
+        {/if}
+
+        <div class="board-grid secondary">
+          <article>
+            <h3>Priority Action Queue</h3>
+            <div class="queue-list">
+              {#each actionQueue as item}
+                <div class={`queue-item prio-${item.priority}`}>
+                  <div>
+                    <p class="queue-title">{item.label}</p>
+                    <p class="queue-sub">
+                      {item.reservation.reservationTime} - {item.reservation.guestName} ({item.reservation.partySize})
+                    </p>
+                  </div>
+                  <div class="queue-actions">
+                    <button class="action-btn slim" on:click={() => markActionDone(item)}>
+                      {item.action === 'confirm_call' ? 'Mark Called' : 'Assign Best'}
+                    </button>
+                    {#if !shiftMode}
+                      <button class="action-btn slim" on:click={() => (selectedReservationId = item.reservationId)}>
+                        Open
+                      </button>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </article>
+
+          <article>
+            <h3>Service Load Curve</h3>
+            <div class="slot-grid">
+              {#each slotLoad as slot}
+                <div class="slot-chip" class:hot={slot.covers >= 18}>
+                  <span>{slot.slot}</span>
+                  <strong>{slot.covers}</strong>
+                </div>
+              {/each}
+            </div>
+
+            <h3 class="section-gap">Nightly Call List</h3>
+            <ul>
+              {#each recommendedCallList as res}
+                <li>{res.reservationTime} - {res.guestName} ({res.partySize}) risk {(res.noShowRisk * 100).toFixed(0)}%</li>
+              {/each}
+            </ul>
+          </article>
+        </div>
+      {/if}
     </section>
 
     <section class="card prototype">

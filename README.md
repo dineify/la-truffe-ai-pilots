@@ -4,7 +4,9 @@ Concise Svelte landing page for 3 AI pilot concepts tailored to La Truffe Sauvag
 
 The `reservation-yield` route now includes a day-of MVP reservation board with:
 - v1 data model spec (tables, reservations, events)
-- table assignment suggestions
+- 3 toggleable board variants (`v1` control board, `v2` floor-first, `v3` action queue)
+- shift mode for each variant (larger touch targets and simplified actions)
+- table assignment suggestions and one-tap best assignment
 - quick status actions (arrived, seated, late, no-show, cancelled)
 - walk-in capture
 - nightly agent call list and load curve preview
