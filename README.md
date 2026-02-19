@@ -2,6 +2,13 @@
 
 Concise Svelte landing page for 3 AI pilot concepts tailored to La Truffe Sauvage.
 
+The `reservation-yield` route now includes a day-of MVP reservation board with:
+- v1 data model spec (tables, reservations, events)
+- table assignment suggestions
+- quick status actions (arrived, seated, late, no-show, cancelled)
+- walk-in capture
+- nightly agent call list and load curve preview
+
 ## Local dev
 
 ```bash

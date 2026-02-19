@@ -56,6 +56,185 @@
     'occasion-concierge': 'Occasion Concierge'
   };
 
+  const statusMeta = {
+    booked: { label: 'Booked', className: 'st-booked' },
+    confirmed: { label: 'Confirmed', className: 'st-confirmed' },
+    arrived: { label: 'Arrived', className: 'st-arrived' },
+    seated: { label: 'Seated', className: 'st-seated' },
+    late: { label: 'Late', className: 'st-late' },
+    no_show: { label: 'No Show', className: 'st-no-show' },
+    cancelled: { label: 'Cancelled', className: 'st-cancelled' },
+    walk_in: { label: 'Walk In', className: 'st-walk-in' }
+  };
+
+  const serviceConfig = {
+    date: '2026-02-19',
+    serviceStart: '17:00',
+    serviceEnd: '22:00',
+    turnMinutes: 110,
+    timezone: 'America/Chicago'
+  };
+
+  const reservationModelExample = {
+    tables: {
+      id: 'string',
+      label: 'string',
+      zone: 'main | patio | bar',
+      seats: 'number',
+      minParty: 'number',
+      mergeGroup: 'string',
+      status: 'available | occupied | held | dirty',
+      nextAvailableAt: 'HH:mm'
+    },
+    reservations: {
+      id: 'string',
+      guestName: 'string',
+      phoneLast4: 'string',
+      partySize: 'number',
+      reservationTime: 'HH:mm',
+      status: 'booked | confirmed | arrived | seated | late | no_show | cancelled | walk_in',
+      assignedTableId: 'string | null',
+      noShowRisk: '0..1',
+      source: 'phone | opentable | website | walk_in',
+      occasion: 'string',
+      notes: 'string',
+      createdAt: 'ISO-8601'
+    },
+    events: {
+      id: 'string',
+      reservationId: 'string',
+      at: 'ISO-8601',
+      type: 'status_change | assignment | note',
+      actor: 'string',
+      payload: 'object'
+    }
+  };
+
+  const baseTables = [
+    { id: 't1', label: 'T1', zone: 'main', seats: 2, minParty: 2, mergeGroup: 'A', status: 'available', nextAvailableAt: '17:00' },
+    { id: 't2', label: 'T2', zone: 'main', seats: 2, minParty: 2, mergeGroup: 'A', status: 'available', nextAvailableAt: '17:00' },
+    { id: 't3', label: 'T3', zone: 'main', seats: 4, minParty: 2, mergeGroup: 'B', status: 'occupied', nextAvailableAt: '19:05' },
+    { id: 't4', label: 'T4', zone: 'main', seats: 4, minParty: 2, mergeGroup: 'B', status: 'available', nextAvailableAt: '17:00' },
+    { id: 't5', label: 'T5', zone: 'patio', seats: 4, minParty: 2, mergeGroup: 'C', status: 'held', nextAvailableAt: '18:45' },
+    { id: 't6', label: 'T6', zone: 'patio', seats: 6, minParty: 3, mergeGroup: 'C', status: 'available', nextAvailableAt: '17:00' },
+    { id: 't7', label: 'T7', zone: 'bar', seats: 2, minParty: 1, mergeGroup: 'D', status: 'available', nextAvailableAt: '17:00' },
+    { id: 't8', label: 'T8', zone: 'main', seats: 8, minParty: 5, mergeGroup: 'E', status: 'dirty', nextAvailableAt: '17:35' }
+  ];
+
+  const baseReservations = [
+    {
+      id: 'r-201',
+      guestName: 'J. Martin',
+      phoneLast4: '0183',
+      partySize: 2,
+      reservationTime: '17:30',
+      status: 'confirmed',
+      assignedTableId: 't1',
+      noShowRisk: 0.09,
+      source: 'phone',
+      occasion: 'Anniversary',
+      notes: 'Prefers quiet table',
+      createdAt: '2026-02-18T13:01:00-06:00'
+    },
+    {
+      id: 'r-202',
+      guestName: 'L. Broussard',
+      phoneLast4: '4377',
+      partySize: 4,
+      reservationTime: '18:00',
+      status: 'booked',
+      assignedTableId: null,
+      noShowRisk: 0.41,
+      source: 'website',
+      occasion: 'Birthday',
+      notes: 'Requested window if available',
+      createdAt: '2026-02-18T16:42:00-06:00'
+    },
+    {
+      id: 'r-203',
+      guestName: 'S. LeBlanc',
+      phoneLast4: '9321',
+      partySize: 6,
+      reservationTime: '18:30',
+      status: 'confirmed',
+      assignedTableId: 't6',
+      noShowRisk: 0.18,
+      source: 'opentable',
+      occasion: 'Business',
+      notes: 'Needs prompt seating by 6:35',
+      createdAt: '2026-02-17T18:00:00-06:00'
+    },
+    {
+      id: 'r-204',
+      guestName: 'A. Fontenot',
+      phoneLast4: '2239',
+      partySize: 2,
+      reservationTime: '19:00',
+      status: 'booked',
+      assignedTableId: null,
+      noShowRisk: 0.52,
+      source: 'website',
+      occasion: 'Date Night',
+      notes: 'No notes',
+      createdAt: '2026-02-19T09:33:00-06:00'
+    },
+    {
+      id: 'r-205',
+      guestName: 'P. Nguyen',
+      phoneLast4: '6671',
+      partySize: 8,
+      reservationTime: '19:30',
+      status: 'confirmed',
+      assignedTableId: 't8',
+      noShowRisk: 0.22,
+      source: 'phone',
+      occasion: 'Family Dinner',
+      notes: 'High-chair requested',
+      createdAt: '2026-02-15T14:06:00-06:00'
+    },
+    {
+      id: 'r-206',
+      guestName: 'Walk-in Queue',
+      phoneLast4: '----',
+      partySize: 2,
+      reservationTime: '20:00',
+      status: 'walk_in',
+      assignedTableId: null,
+      noShowRisk: 0,
+      source: 'walk_in',
+      occasion: 'N/A',
+      notes: 'Added by host stand',
+      createdAt: '2026-02-19T18:01:00-06:00'
+    }
+  ];
+
+  const baseEvents = [
+    {
+      id: 'e-001',
+      reservationId: 'r-202',
+      at: '2026-02-19T14:42:00-06:00',
+      type: 'status_change',
+      actor: 'nightly-agent',
+      payload: { from: 'booked', to: 'booked', riskFlag: 'high_no_show' }
+    },
+    {
+      id: 'e-002',
+      reservationId: 'r-203',
+      at: '2026-02-19T16:11:00-06:00',
+      type: 'assignment',
+      actor: 'host',
+      payload: { tableId: 't6' }
+    },
+    {
+      id: 'e-003',
+      reservationId: 'r-201',
+      at: '2026-02-19T17:28:00-06:00',
+      type: 'status_change',
+      actor: 'host',
+      payload: { from: 'confirmed', to: 'arrived' }
+    }
+  ];
+
   function readRoute() {
     const hash = window.location.hash.replace('#/', '').trim();
     return pages[hash] ? hash : 'reservation-yield';
@@ -68,6 +247,14 @@
     window.location.hash = `/${next}`;
   }
 
+  let tables = structuredClone(baseTables);
+  let reservations = structuredClone(baseReservations);
+  let events = structuredClone(baseEvents);
+  let selectedReservationId = reservations[0]?.id ?? null;
+
+  let walkInName = 'Walk-in Guest';
+  let walkInPartySize = 2;
+
   let primeReservations = 42;
   let predictedNoShowRate = 8;
   let safeCaptureRate = 60;
@@ -75,10 +262,169 @@
   let avgCheck = 95;
   let serviceNightsPerMonth = 12;
 
+  $: selectedReservation = reservations.find((r) => r.id === selectedReservationId) ?? null;
+  $: sortedReservations = [...reservations].sort((a, b) => a.reservationTime.localeCompare(b.reservationTime));
+  $: atRiskReservations = sortedReservations.filter(
+    (r) => (r.status === 'booked' || r.status === 'confirmed') && r.noShowRisk >= 0.35
+  );
+  $: upcomingUnassigned = sortedReservations.filter(
+    (r) => (r.status === 'booked' || r.status === 'confirmed') && !r.assignedTableId
+  );
+
   $: predictedNoShows = primeReservations * (predictedNoShowRate / 100);
   $: suggestedOverbook = Math.max(0, Math.floor(predictedNoShows * (safeCaptureRate / 100)));
   $: recoveredCovers = suggestedOverbook * (overbookShowRate / 100);
   $: monthlyRevenueLift = Math.round(recoveredCovers * avgCheck * serviceNightsPerMonth);
+
+  $: timelineSlots = buildTimeline(serviceConfig.serviceStart, serviceConfig.serviceEnd, 30);
+  $: slotLoad = timelineSlots.map((slot) => {
+    const covers = reservations
+      .filter((r) => ['booked', 'confirmed', 'arrived', 'seated', 'walk_in'].includes(r.status))
+      .filter((r) => isWithinWindow(slot, r.reservationTime, serviceConfig.turnMinutes))
+      .reduce((sum, r) => sum + r.partySize, 0);
+    return { slot, covers };
+  });
+
+  $: totalExpectedCovers = reservations
+    .filter((r) => ['booked', 'confirmed', 'arrived', 'seated', 'walk_in'].includes(r.status))
+    .reduce((sum, r) => sum + r.partySize, 0);
+
+  $: noShowExposure = reservations
+    .filter((r) => r.status === 'booked' || r.status === 'confirmed')
+    .reduce((sum, r) => sum + Math.round(r.partySize * r.noShowRisk), 0);
+
+  $: recommendedCallList = atRiskReservations.slice(0, 4);
+
+  $: suggestedTables = selectedReservation ? suggestTables(selectedReservation, tables, reservations) : [];
+
+  function parseMinutes(hhmm) {
+    const [h, m] = hhmm.split(':').map(Number);
+    return h * 60 + m;
+  }
+
+  function isWithinWindow(slot, reservationTime, turnMinutes) {
+    const slotMin = parseMinutes(slot);
+    const start = parseMinutes(reservationTime);
+    return slotMin >= start && slotMin < start + turnMinutes;
+  }
+
+  function buildTimeline(start, end, interval) {
+    const slots = [];
+    const startMin = parseMinutes(start);
+    const endMin = parseMinutes(end);
+    for (let t = startMin; t <= endMin; t += interval) {
+      const hh = String(Math.floor(t / 60)).padStart(2, '0');
+      const mm = String(t % 60).padStart(2, '0');
+      slots.push(`${hh}:${mm}`);
+    }
+    return slots;
+  }
+
+  function tableById(id) {
+    return tables.find((t) => t.id === id);
+  }
+
+  function suggestTables(reservation, allTables, allReservations) {
+    const usedTableIds = new Set(
+      allReservations
+        .filter((r) => r.id !== reservation.id)
+        .filter((r) => ['booked', 'confirmed', 'arrived', 'seated', 'walk_in'].includes(r.status))
+        .filter((r) => isWithinWindow(r.reservationTime, reservation.reservationTime, serviceConfig.turnMinutes) || isWithinWindow(reservation.reservationTime, r.reservationTime, serviceConfig.turnMinutes))
+        .map((r) => r.assignedTableId)
+        .filter(Boolean)
+    );
+
+    return allTables
+      .filter((t) => t.seats >= reservation.partySize)
+      .filter((t) => t.minParty <= reservation.partySize)
+      .map((t) => {
+        const seatWaste = t.seats - reservation.partySize;
+        const conflict = usedTableIds.has(t.id) ? 1 : 0;
+        const statusPenalty = t.status === 'available' ? 0 : t.status === 'held' ? 1 : 2;
+        const score = seatWaste + conflict * 6 + statusPenalty * 2;
+        return { ...t, score, usedSoon: usedTableIds.has(t.id) };
+      })
+      .sort((a, b) => a.score - b.score)
+      .slice(0, 4);
+  }
+
+  function assignTable(reservationId, tableId) {
+    reservations = reservations.map((r) =>
+      r.id === reservationId ? { ...r, assignedTableId: tableId } : r
+    );
+    events = [
+      {
+        id: `e-${Date.now()}`,
+        reservationId,
+        at: new Date().toISOString(),
+        type: 'assignment',
+        actor: 'host',
+        payload: { tableId }
+      },
+      ...events
+    ];
+  }
+
+  function updateReservationStatus(reservationId, nextStatus) {
+    const current = reservations.find((r) => r.id === reservationId);
+    if (!current) return;
+
+    reservations = reservations.map((r) =>
+      r.id === reservationId ? { ...r, status: nextStatus } : r
+    );
+
+    events = [
+      {
+        id: `e-${Date.now()}`,
+        reservationId,
+        at: new Date().toISOString(),
+        type: 'status_change',
+        actor: 'host',
+        payload: { from: current.status, to: nextStatus }
+      },
+      ...events
+    ];
+
+    if (nextStatus === 'seated' && current.assignedTableId) {
+      tables = tables.map((t) =>
+        t.id === current.assignedTableId
+          ? { ...t, status: 'occupied', nextAvailableAt: bumpTime(current.reservationTime, serviceConfig.turnMinutes) }
+          : t
+      );
+    }
+  }
+
+  function bumpTime(hhmm, mins) {
+    const value = parseMinutes(hhmm) + mins;
+    const hh = String(Math.floor(value / 60)).padStart(2, '0');
+    const mm = String(value % 60).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+
+  function addWalkIn() {
+    const now = new Date();
+    const localTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const newId = `r-${Math.floor(Math.random() * 900 + 100)}`;
+    const newWalkIn = {
+      id: newId,
+      guestName: walkInName,
+      phoneLast4: '----',
+      partySize: Math.max(1, Number(walkInPartySize) || 2),
+      reservationTime: localTime,
+      status: 'walk_in',
+      assignedTableId: null,
+      noShowRisk: 0,
+      source: 'walk_in',
+      occasion: 'N/A',
+      notes: 'Added at host stand',
+      createdAt: now.toISOString()
+    };
+
+    reservations = [...reservations, newWalkIn];
+    selectedReservationId = newId;
+    walkInName = 'Walk-in Guest';
+    walkInPartySize = 2;
+  }
 
   window.addEventListener('hashchange', () => {
     route = readRoute();
@@ -99,10 +445,7 @@
 
   <nav class="tabs" aria-label="Pitch options">
     {#each Object.keys(routeLabel) as key}
-      <button
-        class:active={route === key}
-        on:click={() => setRoute(key)}
-      >
+      <button class:active={route === key} on:click={() => setRoute(key)}>
         {routeLabel[key]}
       </button>
     {/each}
@@ -150,6 +493,146 @@
   </section>
 
   {#if route === 'reservation-yield'}
+    <section class="card prototype">
+      <h2>MVP Data Model (v1)</h2>
+      <p class="one-liner">
+        Structured to support both nightly risk scoring and same-day host stand updates.
+      </p>
+      <pre>{JSON.stringify(reservationModelExample, null, 2)}</pre>
+    </section>
+
+    <section class="card prototype">
+      <h2>Day-Of Reservation Board (Build Tonight)</h2>
+      <p class="one-liner">
+        Real-time control surface for host stand: assignments, status changes, no-show risk, and quick walk-ins.
+      </p>
+
+      <div class="board-metrics">
+        <article>
+          <h3>Expected Covers</h3>
+          <p class="metric">{totalExpectedCovers}</p>
+        </article>
+        <article>
+          <h3>No-Show Exposure</h3>
+          <p class="metric">{noShowExposure} covers</p>
+        </article>
+        <article>
+          <h3>High-Risk Calls</h3>
+          <p class="metric">{recommendedCallList.length}</p>
+        </article>
+        <article>
+          <h3>Unassigned</h3>
+          <p class="metric">{upcomingUnassigned.length}</p>
+        </article>
+      </div>
+
+      <div class="board-grid">
+        <article>
+          <h3>Reservations Timeline</h3>
+          <div class="res-list">
+            {#each sortedReservations as res}
+              <button
+                class="res-item"
+                class:selected={selectedReservationId === res.id}
+                on:click={() => (selectedReservationId = res.id)}
+              >
+                <div>
+                  <p class="res-time">{res.reservationTime}</p>
+                  <p class="res-name">{res.guestName} ({res.partySize})</p>
+                </div>
+                <div class="res-meta">
+                  <span class={`status-pill ${statusMeta[res.status]?.className || ''}`}>
+                    {statusMeta[res.status]?.label || res.status}
+                  </span>
+                  <span class="risk">Risk {(res.noShowRisk * 100).toFixed(0)}%</span>
+                </div>
+              </button>
+            {/each}
+          </div>
+
+          <h3 class="section-gap">Add Walk-In</h3>
+          <div class="control">
+            <label for="walkInName">Guest / label</label>
+            <input id="walkInName" bind:value={walkInName} />
+          </div>
+          <div class="control">
+            <label for="walkInPartySize">Party size</label>
+            <input id="walkInPartySize" type="number" min="1" max="12" bind:value={walkInPartySize} />
+          </div>
+          <button class="action-btn" on:click={addWalkIn}>Add Walk-In Now</button>
+        </article>
+
+        <article>
+          {#if selectedReservation}
+            <h3>Selected Reservation</h3>
+            <p class="selected-heading">
+              {selectedReservation.guestName} at {selectedReservation.reservationTime} (party {selectedReservation.partySize})
+            </p>
+            <p class="selected-detail">
+              Source: {selectedReservation.source} | Occasion: {selectedReservation.occasion}
+            </p>
+            <p class="selected-detail">Notes: {selectedReservation.notes}</p>
+            <p class="selected-detail">
+              Current table: {selectedReservation.assignedTableId || 'Unassigned'}
+            </p>
+
+            <h3 class="section-gap">Quick Status Actions</h3>
+            <div class="status-actions">
+              <button on:click={() => updateReservationStatus(selectedReservation.id, 'arrived')}>Mark Arrived</button>
+              <button on:click={() => updateReservationStatus(selectedReservation.id, 'seated')}>Mark Seated</button>
+              <button on:click={() => updateReservationStatus(selectedReservation.id, 'late')}>Mark Late</button>
+              <button on:click={() => updateReservationStatus(selectedReservation.id, 'no_show')}>Mark No Show</button>
+              <button on:click={() => updateReservationStatus(selectedReservation.id, 'cancelled')}>Cancel</button>
+            </div>
+
+            <h3 class="section-gap">Suggested Table Placements</h3>
+            <div class="table-suggest-list">
+              {#each suggestedTables as t}
+                <div class="table-suggest">
+                  <div>
+                    <p class="table-line">{t.label} | {t.zone} | {t.seats} seats</p>
+                    <p class="table-sub">
+                      {t.status}, next {t.nextAvailableAt}{#if t.usedSoon} (conflict risk){/if}
+                    </p>
+                  </div>
+                  <button class="action-btn slim" on:click={() => assignTable(selectedReservation.id, t.id)}>
+                    Assign
+                  </button>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <p>Select a reservation to start.</p>
+          {/if}
+        </article>
+      </div>
+
+      <div class="board-grid secondary">
+        <article>
+          <h3>Nightly Agent Call List (High Risk)</h3>
+          <ul>
+            {#each recommendedCallList as res}
+              <li>
+                {res.reservationTime} - {res.guestName} ({res.partySize}) risk {(res.noShowRisk * 100).toFixed(0)}%
+              </li>
+            {/each}
+          </ul>
+        </article>
+
+        <article>
+          <h3>Load Curve (30-Min Slots)</h3>
+          <div class="slot-grid">
+            {#each slotLoad as slot}
+              <div class="slot-chip" class:hot={slot.covers >= 18}>
+                <span>{slot.slot}</span>
+                <strong>{slot.covers}</strong>
+              </div>
+            {/each}
+          </div>
+        </article>
+      </div>
+    </section>
+
     <section class="card prototype">
       <h2>Reservation Yield Pilot Simulator</h2>
       <p class="one-liner">
