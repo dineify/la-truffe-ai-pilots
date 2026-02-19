@@ -1,0 +1,25 @@
+# la-truffe-ai-pilots
+
+Concise Svelte landing page for 3 AI pilot concepts tailored to La Truffe Sauvage.
+
+## Local dev
+
+```bash
+npm install
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+npm run preview
+```
+
+## Deploy to GitHub Pages
+
+1. Push this repository to GitHub as `camerondurham/la-truffe-ai-pilots`.
+2. In GitHub repo settings, set Pages source to **GitHub Actions**.
+3. The included workflow in `.github/workflows/deploy.yml` will build and deploy on every push to `main`.
+
+If the repository name changes, update `base` in `vite.config.js`.

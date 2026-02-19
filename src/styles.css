@@ -1,0 +1,263 @@
+:root {
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  line-height: 1.45;
+  font-weight: 400;
+  color: #1f2a2c;
+  background: linear-gradient(180deg, #f5f3ee 0%, #ece8de 100%);
+
+  --ink: #1f2a2c;
+  --muted: #4b5a5d;
+  --paper: #fffef9;
+  --brand: #2f5d50;
+  --brand-soft: #dbe9e0;
+  --line: #d5d2c8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+.top {
+  margin-bottom: 1.25rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+}
+
+h1 {
+  margin: 0.35rem 0;
+  font-size: clamp(1.8rem, 3vw, 2.4rem);
+}
+
+.sub {
+  margin: 0;
+  color: var(--muted);
+}
+
+.print-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.print-row p {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.print-btn {
+  border: 1px solid var(--brand);
+  color: var(--brand);
+  background: #f8fbf9;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.tabs button {
+  border: 1px solid var(--line);
+  background: #f6f4ee;
+  color: var(--ink);
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+
+.tabs button.active {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.25rem;
+  box-shadow: 0 10px 28px rgba(31, 42, 44, 0.07);
+}
+
+h2 {
+  margin-top: 0;
+  margin-bottom: 0.35rem;
+}
+
+.one-liner {
+  margin-top: 0;
+  color: var(--muted);
+  font-size: 1.02rem;
+}
+
+.prototype {
+  margin-top: 1rem;
+}
+
+.sim-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.control + .control {
+  margin-top: 0.6rem;
+}
+
+.control label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.control input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.92rem;
+  background: #fff;
+}
+
+.result-heading {
+  margin-top: 0.9rem;
+}
+
+.result-value {
+  margin-top: 0.2rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+.result-note {
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+article {
+  background: #fcfbf7;
+  border: 1px solid #e4e0d4;
+  border-radius: 12px;
+  padding: 0.9rem;
+}
+
+h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+  color: var(--brand);
+}
+
+p,
+li {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+ul {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+li + li {
+  margin-top: 0.4rem;
+}
+
+@media (max-width: 760px) {
+  .page {
+    padding: 1.1rem 0.85rem 2rem;
+  }
+
+  .print-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sim-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+}
+
+@media print {
+  :root {
+    background: #fff;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .page {
+    max-width: 100%;
+    padding: 0;
+  }
+
+  .tabs,
+  .print-row,
+  .prototype .control {
+    display: none !important;
+  }
+
+  .card {
+    box-shadow: none;
+    border: 1px solid #bfbfbf;
+    border-radius: 0;
+    margin: 0 0 0.45rem;
+    padding: 0.75rem;
+    break-inside: avoid-page;
+  }
+
+  .sub {
+    margin-bottom: 0.35rem;
+  }
+
+  article {
+    break-inside: avoid-page;
+  }
+
+  .prototype .result-value {
+    font-size: 1.25rem;
+  }
+}
